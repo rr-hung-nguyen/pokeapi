@@ -33,7 +33,7 @@ A RESTful API for Pokémon - [pokeapi.co](https://pokeapi.co)
 - [Join Us On Slack!](#join-us-on-slack)
 - [Contributing](#contributing)
 
-## Setup <a id="setup"></a> &nbsp; [![pyVersion310](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/download/releases/3.10/)
+## Setup <a id="setup"></a> &nbsp; [![pyVersion312](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/release/python-3128/)
 
 - Download this source code into a working directory, be sure to use the flag `--recurse-submodules` to clone also our submodules.
 
@@ -171,6 +171,7 @@ This k8s setup creates all k8s resources inside the _Namespace_ `pokeapi`, run `
 |.Net Standard |[mtrdp642/PokeApiNet](https://github.com/mtrdp642/PokeApiNet)|Auto caching |
 |Dart|[prathanbomb/pokedart](https://github.com/prathanbomb/pokedart)| |
 |Go|[mtslzr/pokeapi-go](https://github.com/mtslzr/pokeapi-go)|Auto caching |
+|Go|[JoshGuarino/PokeGo](https://github.com/JoshGuarino/PokeGo) |Auto caching |
 |PHP |[lmerotta/phpokeapi](https://github.com/lmerotta/phpokeapi)|Auto caching, lazy loading |
 |PowerShell|[Celerium/PokeAPI-PowerShellWrapper](https://github.com/Celerium/PokeAPI-PowerShellWrapper)| |
 |Python|[beastmatser/aiopokeapi](https://github.com/beastmatser/aiopokeapi)|Auto caching, asynchronous |
