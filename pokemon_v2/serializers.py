@@ -1421,6 +1421,7 @@ class StatDetailSerializer(serializers.ModelSerializer):
     )
     affecting_moves = serializers.SerializerMethodField("get_moves_that_affect")
     affecting_natures = serializers.SerializerMethodField("get_natures_that_affect")
+    affecting_items = serializers.SerializerMethodField("get_items_that_affect")
 
     class Meta:
         model = Stat
@@ -1431,6 +1432,7 @@ class StatDetailSerializer(serializers.ModelSerializer):
             "is_battle_only",
             "affecting_moves",
             "affecting_natures",
+            "affecting_items",
             "characteristics",
             "move_damage_class",
             "names",
@@ -1568,6 +1570,80 @@ class StatDetailSerializer(serializers.ModelSerializer):
         ).data
 
         return OrderedDict([("increase", increases), ("decrease", decreases)])
+
+    @extend_schema_field(
+        field={
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": ["name", "url"],
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "examples": ["protein", "x-attack"],
+                    },
+                    "url": {
+                        "type": "string",
+                        "format": "uri",
+                        "examples": ["https://pokeapi.co/api/v2/item/46/"],
+                    },
+                },
+            },
+        }
+    )
+    def get_items_that_affect(self, obj):
+        """
+        Get items that affect this stat (like vitamins, X-items, etc.)
+        """
+        # Map stat names to their corresponding vitamin items
+        stat_item_mapping = {
+            "hp": ["hp-up"],
+            "attack": ["protein"],
+            "defense": ["iron"],
+            "special-attack": ["calcium"],
+            "special-defense": ["zinc"],
+            "speed": ["carbos"],
+        }
+
+        # Get the stat name (lowercase)
+        stat_name = obj.name.lower()
+
+        # Find items that affect this stat
+        affecting_items = []
+
+        # Check for vitamin items
+        if stat_name in stat_item_mapping:
+            for item_identifier in stat_item_mapping[stat_name]:
+                try:
+                    item = Item.objects.get(name=item_identifier)
+                    affecting_items.append(
+                        ItemSummarySerializer(item, context=self.context).data
+                    )
+                except Item.DoesNotExist:
+                    pass
+
+        # Check for X-items (like X Attack, X Defense, etc.)
+        x_item_mapping = {
+            "attack": ["x-attack"],
+            "defense": ["x-defense"],
+            "special-attack": ["x-sp-atk"],
+            "special-defense": ["x-sp-def"],
+            "speed": ["x-speed"],
+            "accuracy": ["x-accuracy"],
+            "evasion": ["x-evasion"],
+        }
+
+        if stat_name in x_item_mapping:
+            for item_identifier in x_item_mapping[stat_name]:
+                try:
+                    item = Item.objects.get(name=item_identifier)
+                    affecting_items.append(
+                        ItemSummarySerializer(item, context=self.context).data
+                    )
+                except Item.DoesNotExist:
+                    pass
+
+        return affecting_items
 
 
 #############################
@@ -5518,6 +5594,8 @@ class PokemonEvolutionSerializer(serializers.ModelSerializer):
     trade_species = PokemonSpeciesSummarySerializer()
     location = LocationSummarySerializer()
     trigger = EvolutionTriggerSummarySerializer(source="evolution_trigger")
+    region_id = RegionSummarySerializer(source="region")
+    base_form_id = PokemonSpeciesSummarySerializer(source="base_form")
 
     class Meta:
         model = PokemonEvolution
@@ -5540,6 +5618,8 @@ class PokemonEvolutionSerializer(serializers.ModelSerializer):
             "time_of_day",
             "trade_species",
             "turn_upside_down",
+            "region_id",
+            "base_form_id",
         )
 
 
@@ -5592,6 +5672,8 @@ class EvolutionChainDetailSerializer(serializers.ModelSerializer):
                                         "trade_species",
                                         "trigger",
                                         "turn_upside_down",
+                                        "region_id",
+                                        "base_form_id",
                                     ],
                                     "properties": {
                                         "gender": {
@@ -5720,6 +5802,30 @@ class EvolutionChainDetailSerializer(serializers.ModelSerializer):
                                             },
                                         },
                                         "turn_upside_down": {"type": "boolean"},
+                                        "region_id": {
+                                            "type": "object",
+                                            "nullable": True,
+                                            "required": ["name", "url"],
+                                            "properties": {
+                                                "name": {"type": "string"},
+                                                "url": {
+                                                    "type": "string",
+                                                    "format": "uri",
+                                                },
+                                            },
+                                        },
+                                        "base_form_id": {
+                                            "type": "object",
+                                            "nullable": True,
+                                            "required": ["name", "url"],
+                                            "properties": {
+                                                "name": {"type": "string"},
+                                                "url": {
+                                                    "type": "string",
+                                                    "format": "uri",
+                                                },
+                                            },
+                                        },
                                     },
                                 },
                             },
