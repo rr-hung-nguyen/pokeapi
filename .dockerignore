@@ -26,5 +26,5 @@ docker-compose*
 *pycache*
 target
 data/v2/cries
-data/v2/csv
+# data/v2/csv - NEEDED for database build!
 data/v2/sprites

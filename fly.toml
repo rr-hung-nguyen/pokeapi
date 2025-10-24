@@ -1,0 +1,71 @@
+# fly.toml app configuration file generated for pokeapi
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+
+app = "nynohu-api-poke"
+
+primary_region = "nrt" # Tokyo, Japan
+
+# Build configuration
+[build]
+
+[deploy]
+  # Run migrations before deploying new version
+  release_command = "python manage.py migrate --settings=config.fly"
+
+[env]
+  # Django settings
+  DJANGO_SETTINGS_MODULE = "config.fly"
+  PORT = "8000"
+
+  # Database will be set automatically by fly.io when you attach postgres
+  # POSTGRES_HOST will be set by DATABASE_URL
+  # POSTGRES_DB will be set by DATABASE_URL
+  # POSTGRES_USER will be set by DATABASE_URL
+  # POSTGRES_PASSWORD will be set by DATABASE_URL
+  # POSTGRES_PORT will be set by DATABASE_URL
+
+# HTTP service
+[[services]]
+  internal_port = 8000
+  protocol = "tcp"
+  auto_stop_machines = false # Keep machines running
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[services.ports]]
+    port = 80
+    handlers = ["http"]
+    force_https = true
+
+  [[services.ports]]
+    port = 443
+    handlers = ["tls", "http"]
+
+  # Health check configuration
+  [services.concurrency]
+    type = "connections"
+    hard_limit = 1000
+    soft_limit = 800
+
+  [[services.tcp_checks]]
+    grace_period = "30s"
+    interval = "15s"
+    restart_limit = 0
+    timeout = "5s"
+
+  # HTTP health check disabled until database is populated
+  # [[services.http_checks]]
+  #   interval = "30s"
+  #   grace_period = "30s"
+  #   method = "get"
+  #   path = "/api/v2/pokemon/1/"
+  #   protocol = "http"
+  #   timeout = "5s"
+  #   tls_skip_verify = false
+
+# VM resources
+[[vm]]
+  memory = '1gb'
+  cpu_kind = 'shared'
+  cpus = 1

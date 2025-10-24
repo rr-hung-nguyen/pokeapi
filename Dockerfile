@@ -1,9 +1,14 @@
-ARG PYTHON_VERSION=3.10-slim-buster
+ARG PYTHON_VERSION=3.10-slim-bookworm
 
 FROM python:${PYTHON_VERSION}
 
 ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN mkdir -p /code
 
@@ -18,10 +23,11 @@ RUN set -ex && \
 
 COPY . /code/
 
-# RUN python manage.py collectstatic --noinput
+# Create a non-root user for fly.io
+RUN useradd -m -u 1000 pokeapi && chown -R pokeapi:pokeapi /code
+USER pokeapi
 
 EXPOSE 8000
 
-# replace demo.wsgi with <project_name>.wsgi
-# CMD ["/bin/bash", "-c", "python manage.py migrate ; gunicorn --bind :8000 --workers 1 demo.wsgi"]
-CMD ["gunicorn", "--bind", ":8000", "--workers", "2", "demo.wsgi"]
+# Gunicorn will be started by fly.io using the processes in fly.toml
+CMD ["gunicorn", "--bind", ":8000", "--workers", "2", "config.wsgi:application"]
