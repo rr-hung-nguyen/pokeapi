@@ -1,6 +1,6 @@
 veekun_pokedex_repository = ../pokedex
 local_config = --settings=config.local
-docker_config = --settings=config.docker-compose
+docker_config = --settings=config.docker_compose
 gql_compose_config_deprecated = -f docker-compose.yml -f docker-compose-dev.yml -f Resources/compose/docker-compose-prod-graphql.yml
 gql_compose_config = -f docker-compose.yml -f Resources/compose/docker-compose-prod-graphql.yml
 
@@ -62,6 +62,9 @@ openapi-generate: check-uv
 docker-up:  # (Docker) Create services/volumes/networks
 	docker compose up -d
 
+docker-dev-up:  # (Docker) Build local pokeapi image and create services/volumes/networks
+	docker compose -f docker-compose.yml -f docker-compose-dev.yml up -d --build
+
 docker-migrate:  # (Docker) Run any pending migrations
 	docker compose exec -T app python manage.py migrate ${docker_config}
 
@@ -95,11 +98,28 @@ docker-prod:
 
 docker-setup: docker-up docker-migrate docker-build-db  # (Docker) Start services, prepare the latest DB schema, populate the DB
 
+docker-dump-db:
+	docker compose exec -T db pg_dump -U ash -Fc -N 'hdb_*' pokeapi > pokeapi.pgdump
+
+docker-restore-db:
+	docker compose exec -T db psql -U ash -d postgres -c "DROP DATABASE pokeapi WITH (FORCE);"
+	docker compose exec -T db psql -U ash -d postgres -c "CREATE DATABASE pokeapi;"
+	docker compose exec -T db pg_restore -U ash -d pokeapi < pokeapi.pgdump
+
 format: check-uv   # Format the source code
 	uv run ruff format .
 
 format-check: check-uv  # Check the source code has been formatted
 	uv run ruff format . --check
+
+lint-check: check-uv  # Lint the source code
+	uv run ruff check .
+
+lint-fix: check-uv  # Lint the source code and fix issues
+	uv run ruff check . --fix
+
+typecheck: check-uv  # Type-check the source code with ty
+	uv run ty check
 
 pull:
 	git checkout master

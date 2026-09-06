@@ -15,8 +15,9 @@ import csv
 import os
 import os.path
 import re
-import json
+
 from django.db import connection
+
 from pokemon_v2.models import *
 
 # why this way? how about use `__file__`
@@ -43,16 +44,16 @@ SOUND_DIR = "{prefix}{{file_name}}".format(
 )
 IMAGE_DIR = os.getcwd() + "/data/v2/sprites/sprites/"
 CRIES_DIR = os.getcwd() + "/data/v2/cries/cries/"
-RESOURCE_IMAGES = []
-RESOURCE_CRIES = []
+RESOURCE_IMAGES: list[str] = []
+RESOURCE_CRIES: list[str] = []
 
-for root, dirs, files in os.walk(IMAGE_DIR):
+for root, _dirs, files in os.walk(IMAGE_DIR):
     for file in files:
         image_path = os.path.join(root.replace(IMAGE_DIR, ""), file)
         image_path = image_path.replace("\\", "/")  # convert Windows-style path to Unix
         RESOURCE_IMAGES.append(image_path)
 
-for root, dirs, files in os.walk(CRIES_DIR):
+for root, _dirs, files in os.walk(CRIES_DIR):
     for file in files:
         cry_path = os.path.join(root.replace(CRIES_DIR, ""), file)
         cry_path = cry_path.replace("\\", "/")  # convert Windows-style path to Unix
@@ -69,13 +70,12 @@ def with_iter(context, iterable=None):
     if iterable is None:
         iterable = context
     with context:
-        for value in iterable:
-            yield value
+        yield from iterable
 
 
 def load_data(file_name):
     # with_iter closes the file when it has finished
-    return csv.reader(with_iter(open(DATA_LOCATION + file_name, "rt", encoding="utf8")), delimiter=",")
+    return csv.reader(with_iter(open(DATA_LOCATION + file_name, encoding="utf8")), delimiter=",")
 
 
 def clear_table(model):
@@ -379,6 +379,16 @@ def _build_growth_rates():
 
 def _build_items():
     def csv_record_to_objects(info):
+        yield Currency(id=int(info[0]), name=info[1])
+
+    build_generic((Currency,), "currencies.csv", csv_record_to_objects)
+
+    def csv_record_to_objects(info):
+        yield CurrencyName(currency_id=int(info[0]), language_id=int(info[1]), name=info[2])
+
+    build_generic((CurrencyName,), "currency_names.csv", csv_record_to_objects)
+
+    def csv_record_to_objects(info):
         yield ItemPocket(id=int(info[0]), name=info[1])
 
     build_generic((ItemPocket,), "item_pockets.csv", csv_record_to_objects)
@@ -421,7 +431,6 @@ def _build_items():
             id=int(info[0]),
             name=info[1],
             item_category_id=int(info[2]),
-            cost=int(info[3]),
             fling_power=int(info[4]) if info[4] != "" else None,
             item_fling_effect_id=int(info[5]) if info[5] != "" else None,
         )
@@ -436,7 +445,7 @@ def _build_items():
         elif re.search(r"^hm[0-9]", info[1]):
             file_name = "hm-normal.png"
         else:
-            file_name = "%s.png" % info[1]
+            file_name = f"{info[1]}.png"
 
         item_sprites = "items/{0}"
         sprites = {"default": file_path_or_none(item_sprites.format(file_name))}
@@ -463,6 +472,22 @@ def _build_items():
         yield ItemGameIndex(item_id=int(info[0]), generation_id=int(info[1]), game_index=int(info[2]))
 
     build_generic((ItemGameIndex,), "item_game_indices.csv", csv_record_to_objects)
+
+    def csv_record_to_objects(info):
+        # Keep backward compatibility with 4-column files (no currency_id).
+        has_currency_id = len(info) >= 5
+        purchase_price_index = 3 if has_currency_id else 2
+        sell_price_index = 4 if has_currency_id else 3
+
+        yield ItemPrice(
+            item_id=int(info[0]),
+            version_group_id=int(info[1]),
+            currency_id=int(info[2]) if has_currency_id and info[2] else 1,
+            purchase_price=(int(info[purchase_price_index]) if info[purchase_price_index] else None),
+            sell_price=int(info[sell_price_index]) if info[sell_price_index] else None,
+        )
+
+    build_generic((ItemPrice,), "item_prices.csv", csv_record_to_objects)
 
     def csv_record_to_objects(info):
         yield ItemFlavorText(
@@ -569,8 +594,8 @@ def _build_types():
             "generation-ix": ["scarlet-violet"],
         }
         sprites = {}
-        for generation in game_map.keys():
-            for game in game_map[generation]:
+        for generation, games in game_map.items():
+            for game in games:
                 if generation not in sprites:
                     sprites[generation] = {}
                 sprites[generation][game] = {
@@ -761,12 +786,12 @@ def _build_moves():
 
     build_generic((MoveFlavorText,), "move_flavor_text.csv", csv_record_to_objects)
 
+    existing_effect_ids = set(MoveEffect.objects.values_list("pk", flat=True))
+
     def csv_record_to_objects(info):
-        _move_effect = None
-        try:
-            _move_effect = MoveEffect.objects.get(pk=int(info[6])) if info[6] != "" else None
-        except:
-            pass
+        effect_id = int(info[6]) if info[6] != "" else None
+        if effect_id not in existing_effect_ids:
+            effect_id = None
 
         yield MoveChange(
             move_id=int(info[0]),
@@ -775,7 +800,7 @@ def _build_moves():
             power=int(info[3]) if info[3] != "" else None,
             pp=int(info[4]) if info[4] != "" else None,
             accuracy=int(info[5]) if info[5] != "" else None,
-            move_effect_id=_move_effect.pk if _move_effect else None,
+            move_effect_id=effect_id,
             move_effect_chance=int(info[7]) if info[7] != "" else None,
         )
 
@@ -1123,7 +1148,7 @@ def _build_locations():
             id=int(info[0]),
             location_id=int(info[1]),
             game_index=int(info[2]),
-            name=("{}-{}".format(location.name, info[3]) if info[3] else "{}-{}".format(location.name, "area")),
+            name=(f"{location.name}-{info[3]}" if info[3] else "{}-{}".format(location.name, "area")),
         )
 
     build_generic((LocationArea,), "location_areas.csv", csv_record_to_objects)
@@ -1258,14 +1283,14 @@ def _build_pokemons():
         identifier = info[1]
         species_id = info[2]
         if "-" in identifier:
-            form_file_name = "%s.%s" % (
+            form_file_name = "{}.{}".format(
                 species_id + "-" + identifier.split("-", 1)[1],
                 extension,
             )
-            id_file_name = "%s.%s" % (pokemon_id, extension)
+            id_file_name = f"{pokemon_id}.{extension}"
             file_name = id_file_name if file_path_or_none(path + id_file_name) else form_file_name
         else:
-            file_name = "%s.%s" % (info[0], extension)
+            file_name = f"{info[0]}.{extension}"
         return file_path_or_none(path + file_name)
 
     def csv_record_to_objects(info):
@@ -1371,6 +1396,12 @@ def _build_pokemons():
                             info,
                             "png",
                         ),
+                        "animated": {
+                            "front_default": try_image_names(poke_sprites + gen_ii + "crystal/animated/", info, "gif"),
+                            "front_shiny": try_image_names(
+                                poke_sprites + gen_ii + "crystal/animated/shiny/", info, "gif"
+                            ),
+                        },
                     },
                     "gold": {
                         "front_default": try_image_names(poke_sprites + gen_ii + "gold/", info, "png"),
@@ -1603,7 +1634,13 @@ def _build_pokemons():
                                 "gif",
                             ),
                         },
-                    }
+                    },
+                    "icons": {
+                        "front_default": try_image_names(poke_sprites + gen_v + "icons/", info, "png"),
+                        "animated": {
+                            "front_default": try_image_names(poke_sprites + gen_v + "icons/animated/", info, "png"),
+                        },
+                    },
                 },
                 "generation-vi": {
                     "omegaruby-alphasapphire": {
@@ -1702,7 +1739,7 @@ def _build_pokemons():
     build_generic((PokemonSprites,), "pokemon.csv", csv_record_to_objects)
 
     def try_cry_names(path, info, extension):
-        file_name = "%s.%s" % (info[0], extension)
+        file_name = f"{info[0]}.{extension}"
         return file_path_or_none(path + file_name, image_file=False)
 
     def csv_record_to_objects(info):
@@ -1809,42 +1846,42 @@ def _build_pokemons():
 
     build_generic((PokemonForm,), "pokemon_forms.csv", csv_record_to_objects)
 
-    def try_image_names(path, info, extension):
+    def try_form_image_names(path, info, extension):
         form_identifier = info[2]
         pokemon_id = info[3]
         pokemon = Pokemon.objects.get(pk=int(pokemon_id))
-        species_id = getattr(pokemon, "pokemon_species_id")
+        species_id = getattr(pokemon.pokemon_species, "pk", 0)
         is_default = int(info[5])
         if form_identifier:
-            form_file_name = "%s-%s.%s" % (species_id, form_identifier, extension)
-            id_file_name = "%s.%s" % (pokemon_id, extension)
+            form_file_name = f"{species_id}-{form_identifier}.{extension}"
+            id_file_name = f"{pokemon_id}.{extension}"
             file_name = id_file_name if file_path_or_none(path + id_file_name) else form_file_name
             if id_file_name and form_file_name and (not is_default):
                 file_name = form_file_name
         else:
-            file_name = "%s.%s" % (species_id, extension)
+            file_name = f"{species_id}.{extension}"
         return file_path_or_none(path + file_name)
 
     def csv_record_to_objects(info):
         poke_sprites = "pokemon/"
         sprites = {
-            "front_default": try_image_names(poke_sprites, info, "png"),
-            "front_shiny": try_image_names(poke_sprites + "shiny/", info, "png"),
-            "back_default": try_image_names(poke_sprites + "back/", info, "png"),
-            "back_shiny": try_image_names(poke_sprites + "back/shiny/", info, "png"),
-            "front_female": try_image_names(poke_sprites + "female/", info, "png"),
-            "front_shiny_female": try_image_names(poke_sprites + "shiny/female/", info, "png"),
-            "back_female": try_image_names(poke_sprites + "back/female/", info, "png"),
-            "back_shiny_female": try_image_names(poke_sprites + "back/shiny/female/", info, "png"),
+            "front_default": try_form_image_names(poke_sprites, info, "png"),
+            "front_shiny": try_form_image_names(poke_sprites + "shiny/", info, "png"),
+            "back_default": try_form_image_names(poke_sprites + "back/", info, "png"),
+            "back_shiny": try_form_image_names(poke_sprites + "back/shiny/", info, "png"),
+            "front_female": try_form_image_names(poke_sprites + "female/", info, "png"),
+            "front_shiny_female": try_form_image_names(poke_sprites + "shiny/female/", info, "png"),
+            "back_female": try_form_image_names(poke_sprites + "back/female/", info, "png"),
+            "back_shiny_female": try_form_image_names(poke_sprites + "back/shiny/female/", info, "png"),
             "versions": {
                 "generation-viii": {
                     "brilliant-diamond-shining-pearl": {
-                        "front_default": try_image_names(
+                        "front_default": try_form_image_names(
                             poke_sprites + "versions/generation-viii/brilliant-diamond-shining-pearl/",
                             info,
                             "png",
                         ),
-                        "front_female": try_image_names(
+                        "front_female": try_form_image_names(
                             poke_sprites + "versions/generation-viii/brilliant-diamond-shining-pearl/female/",
                             info,
                             "png",
@@ -1853,12 +1890,12 @@ def _build_pokemons():
                 },
                 "generation-ix": {
                     "scarlet-violet": {
-                        "front_default": try_image_names(
+                        "front_default": try_form_image_names(
                             poke_sprites + "versions/generation-ix/scarlet-violet/",
                             info,
                             "png",
                         ),
-                        "front_female": try_image_names(
+                        "front_female": try_form_image_names(
                             poke_sprites + "versions/generation-ix/scarlet-violet/female/",
                             info,
                             "png",
@@ -1907,9 +1944,24 @@ def _build_pokemons():
             item_id=int(info[2]) if info[2] != "" else None,
             ability_id=int(info[3]) if info[3] != "" else None,
             move_id=int(info[4]) if info[4] != "" else None,
+            base_form_id=int(info[5]) if info[5] != "" else None,
         )
 
     build_generic((PokemonFormCondition,), "pokemon_form_conditions.csv", csv_record_to_objects)
+
+    def csv_record_to_objects(info):
+        yield PokemonFormFlavorText(
+            pokemon_form_id=int(info[0]),
+            version_id=int(info[1]),
+            language_id=int(info[2]),
+            flavor_text=info[3],
+        )
+
+    build_generic(
+        (PokemonFormFlavorText,),
+        "pokemon_form_flavor_text.csv",
+        csv_record_to_objects,
+    )
 
     def csv_record_to_objects(info):
         yield PokemonGameIndex(pokemon_id=int(info[0]), version_id=int(info[1]), game_index=int(info[2]))
@@ -2081,6 +2133,21 @@ def _build_encounters():
     build_generic(
         (EncounterConditionValueMap,),
         "encounter_condition_value_map.csv",
+        csv_record_to_objects,
+    )
+
+    def csv_record_to_objects(info):
+        yield EncounterPokemonDetail(
+            encounter_id=int(info[0]),
+            min_perfect_ivs=int(info[1]) if info[1] != "" else None,
+            always_shiny=bool(int(info[2])),
+            never_shiny=bool(int(info[3])),
+            is_alpha=bool(int(info[4])),
+        )
+
+    build_generic(
+        (EncounterPokemonDetail,),
+        "encounter_pokemon_details.csv",
         csv_record_to_objects,
     )
 
